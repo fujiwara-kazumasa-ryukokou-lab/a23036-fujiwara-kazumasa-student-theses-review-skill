@@ -17,6 +17,14 @@ bash skills/student-theses-review/scripts/run-review.sh -r /path/to/student-thes
 
 `next_actions` を順に実行し、レビュー後は `mark-reviewed.sh` で記録する。
 
+別マシンで `student-theses/agent.md` を置く場合:
+
+```bash
+bash skills/student-theses-review/scripts/install-agent-md.sh \
+  -r /path/to/student-theses \
+  -s /path/to/skills/student-theses-review   # gh skill install 先でも可
+```
+
 ## 前提
 
 - GitHub CLI (`gh`) ・ `jq` 認証済み
