@@ -1,4 +1,4 @@
-# a23036-student-theses-review-skill
+# a23036-fujiwara-kazumasa-student-theses-review-skill
 
 学生卒論・研究リポジトリ（`fujiwara-kazumasa-ryukokou-lab` 組織）の更新取得・レビュー・Issue 起票をエージェントが行うためのスキル正本。
 
@@ -11,8 +11,8 @@
 ## インストール
 
 ```bash
-gh skill install fujiwara-kazumasa-ryukokou-lab/a23036-student-theses-review-skill student-theses-review --agent cursor --scope user
-gh skill install fujiwara-kazumasa-ryukokou-lab/a23036-student-theses-review-skill student-theses-review --agent claude-code --scope user
+gh skill install fujiwara-kazumasa-ryukokou-lab/a23036-fujiwara-kazumasa-student-theses-review-skill student-theses-review --agent cursor --scope user
+gh skill install fujiwara-kazumasa-ryukokou-lab/a23036-fujiwara-kazumasa-student-theses-review-skill student-theses-review --agent claude-code --scope user
 ```
 
 ## ローカル試験

@@ -9,7 +9,7 @@ LIMIT="${LIMIT:-30}"
 GIT_TIMEOUT="${GIT_TIMEOUT:-45}"
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# skills/student-theses-review/scripts -> repo root (a23036-student-theses-review-skill)
+# skills/student-theses-review/scripts -> repo root (a23036-fujiwara-kazumasa-student-theses-review-skill)
 # Default student-theses root: sibling of this skill repo under common parent
 SKILL_REPO_ROOT="$(cd "${script_dir}/../../.." && pwd)"
 STUDENT_THESES_ROOT="${STUDENT_THESES_ROOT:-$(cd "${SKILL_REPO_ROOT}/.." 2>/dev/null && pwd || echo "")}"
