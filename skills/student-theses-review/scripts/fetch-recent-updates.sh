@@ -1,139 +1,144 @@
 #!/usr/bin/env bash
-# Fast fetch for recently pushed non-a23036 org repos under student-theses workspace.
+# Fast fetch for recently pushed repos under student-theses workspace.
 set -euo pipefail
 
-ORG="${ORG:-fujiwara-kazumasa-ryukokou-lab}"
-EXCLUDE_PREFIX="${EXCLUDE_PREFIX:-a23036}"
-DAYS="${DAYS:-14}"
-LIMIT="${LIMIT:-30}"
-GIT_TIMEOUT="${GIT_TIMEOUT:-45}"
-
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# skills/student-theses-review/scripts -> repo root (a23036-fujiwara-kazumasa-student-theses-review-skill)
-# Default student-theses root: sibling of this skill repo under common parent
-SKILL_REPO_ROOT="$(cd "${script_dir}/../../.." && pwd)"
-STUDENT_THESES_ROOT="${STUDENT_THESES_ROOT:-$(cd "${SKILL_REPO_ROOT}/.." 2>/dev/null && pwd || echo "")}"
+# shellcheck source=lib/common.sh
+source "${script_dir}/lib/common.sh"
+
+JSON_OUT=0
 
 usage() {
 	cat <<'EOF'
-Usage: fetch-recent-updates.sh
+Usage: fetch-recent-updates.sh [-r ROOT] [--json]
 
-Fetch and fast-forward recently pushed repos (excluding a23036 prefix).
-
-Environment:
-  STUDENT_THESES_ROOT  Local clone root (default: parent of skill repo)
-  ORG, EXCLUDE_PREFIX, DAYS, LIMIT  Same as list-review-targets.sh
-  GIT_TIMEOUT          Per-repo fetch timeout seconds (default: 45)
+Fetch and fast-forward recently pushed repos (excluding configured repos).
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-	usage
-	exit 0
-fi
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	-r | --root)
+		STUDENT_THESES_ROOT="$2"
+		shift 2
+		;;
+	--json)
+		JSON_OUT=1
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "error: unknown option: $1" >&2
+		exit 2
+		;;
+	esac
+done
 
-if ! command -v gh >/dev/null 2>&1; then
-	echo "error: gh CLI is required" >&2
+require_gh
+require_jq
+
+ROOT="$(resolve_student_theses_root)" || {
+	echo "error: STUDENT_THESES_ROOT not found. Pass -r/--root." >&2
 	exit 1
-fi
-
-if [[ -z "$STUDENT_THESES_ROOT" || ! -d "$STUDENT_THESES_ROOT" ]]; then
-	echo "error: STUDENT_THESES_ROOT not found. Set it explicitly." >&2
-	exit 1
-fi
-
-run_git() {
-	if command -v timeout >/dev/null 2>&1; then
-		timeout "$GIT_TIMEOUT" git "$@"
-	else
-		git "$@"
-	fi
 }
 
-cutoff_epoch="$(date -d "${DAYS} days ago" +%s 2>/dev/null || date -v-"${DAYS}"d +%s)"
-
-declare -a updated=()
-declare -a uptodate=()
-declare -a failed=()
-declare -a missing=()
+cutoff="$(cutoff_epoch "$DAYS")"
+updated='[]'
+uptodate='[]'
+missing='[]'
+failed='[]'
 
 sync_one() {
 	local name="$1"
-	local dir="${STUDENT_THESES_ROOT}/${name}"
+	local dir="${ROOT}/${name}"
 
 	if [[ ! -d "$dir/.git" ]]; then
-		missing+=("$name")
+		missing="$(jq -c --arg n "$name" '. + [$n]' <<<"$missing")"
 		echo "MISSING ${name}"
 		return 0
 	fi
 
-	local before branch remote_sha after pull_status=0
+	local before branch remote_sha after
 	before="$(git -C "$dir" rev-parse HEAD 2>/dev/null || echo none)"
 	branch="$(git -C "$dir" symbolic-ref --short HEAD 2>/dev/null || echo main)"
 
 	if ! run_git -C "$dir" fetch origin -q 2>&1; then
-		failed+=("$name")
+		failed="$(jq -c --arg e "${name}: fetch timed out or failed" '. + [$e]' <<<"$failed")"
 		echo "FAIL ${name}: fetch timed out or failed"
 		return 0
 	fi
 
 	remote_sha="$(git -C "$dir" rev-parse "origin/${branch}" 2>/dev/null || true)"
 	if [[ -z "$remote_sha" ]]; then
-		failed+=("$name")
+		failed="$(jq -c --arg e "${name}: origin/${branch} not found" '. + [$e]' <<<"$failed")"
 		echo "FAIL ${name}: origin/${branch} not found"
 		return 0
 	fi
 
 	if [[ "$before" == "$remote_sha" ]]; then
-		uptodate+=("$name")
+		uptodate="$(jq -c --arg n "$name" '. + [$n]' <<<"$uptodate")"
 		echo "UPTODATE ${name}"
 		return 0
 	fi
 
 	if ! run_git -C "$dir" merge --ff-only "origin/${branch}" -q 2>/dev/null; then
 		if ! run_git -C "$dir" pull --ff-only -q 2>/dev/null; then
-			failed+=("$name: non-fast-forward")
+			failed="$(jq -c --arg e "${name}: non-fast-forward" '. + [$e]' <<<"$failed")"
 			echo "FAIL ${name}: non-fast-forward"
 			return 0
 		fi
 	fi
 
 	after="$(git -C "$dir" rev-parse HEAD)"
-	updated+=("$name")
+	updated="$(jq -c --arg n "$name" --arg b "$before" --arg a "$after" \
+		'. + [{name: $n, before: $b, after: $a}]' <<<"$updated")"
 	echo "UPDATED ${name}: ${before} -> ${after}"
 	git -C "$dir" log --oneline "${before}..${after}" 2>/dev/null | head -5 | sed 's/^/  /' || true
 }
 
-echo "=== fetch recent updates (${ORG}) ==="
-echo "root: ${STUDENT_THESES_ROOT}"
-echo
+if [[ "$JSON_OUT" -eq 0 ]]; then
+	echo "=== fetch recent updates (${ORG}) ==="
+	echo "root: ${ROOT}"
+	echo
+fi
 
 while IFS=$'\t' read -r pushed name; do
 	[[ -z "$name" ]] && continue
-	[[ "$name" == "${EXCLUDE_PREFIX}"* ]] && continue
-	pushed_epoch="$(date -d "$pushed" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$pushed" +%s 2>/dev/null || echo 0)"
-	if [[ "$pushed_epoch" -lt "$cutoff_epoch" ]]; then
-		continue
-	fi
+	is_excluded_repo "$name" && continue
+	[[ "$(to_epoch "$pushed")" -lt "$cutoff" ]] && continue
 	sync_one "$name"
-done < <(gh repo list "$ORG" --limit "$LIMIT" --json name,pushedAt -q '.[] | "\(.pushedAt)\t\(.name)"' | sort -r)
+done < <(list_target_repos)
+
+if [[ "$JSON_OUT" -eq 1 ]]; then
+	jq -nc \
+		--arg root "$ROOT" \
+		--argjson updated "$updated" \
+		--argjson uptodate "$uptodate" \
+		--argjson missing "$missing" \
+		--argjson failed "$failed" \
+		'{root: $root, updated: $updated, uptodate: $uptodate, missing: $missing, failed: $failed}'
+	exit "$(jq 'length' <<<"$failed")"
+fi
 
 echo
 echo "=== summary ==="
-if [[ ${#updated[@]} -gt 0 ]]; then
+if [[ "$(jq 'length' <<<"$updated")" -gt 0 ]]; then
 	echo "更新あり:"
-	printf '  - %s\n' "${updated[@]}"
+	jq -r '.[] | "  - \(.name)"' <<<"$updated"
 fi
-if [[ ${#uptodate[@]} -gt 0 ]]; then
+if [[ "$(jq 'length' <<<"$uptodate")" -gt 0 ]]; then
 	echo "更新なし:"
-	printf '  - %s\n' "${uptodate[@]}"
+	jq -r '.[]' <<<"$uptodate" | sed 's/^/  - /'
 fi
-if [[ ${#missing[@]} -gt 0 ]]; then
+if [[ "$(jq 'length' <<<"$missing")" -gt 0 ]]; then
 	echo "未 clone:"
-	printf '  - %s\n' "${missing[@]}"
+	jq -r '.[]' <<<"$missing" | sed 's/^/  - /'
 fi
-if [[ ${#failed[@]} -gt 0 ]]; then
+if [[ "$(jq 'length' <<<"$failed")" -gt 0 ]]; then
 	echo "失敗:"
-	printf '  - %s\n' "${failed[@]}"
+	jq -r '.[]' <<<"$failed" | sed 's/^/  - /'
 	exit 1
 fi

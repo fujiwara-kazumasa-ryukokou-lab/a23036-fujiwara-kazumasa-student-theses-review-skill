@@ -2,132 +2,114 @@
 # List open issues where a non-supervisor commented after the last supervisor comment.
 set -euo pipefail
 
-ORG="${ORG:-fujiwara-kazumasa-ryukokou-lab}"
-EXCLUDE_PREFIX="${EXCLUDE_PREFIX:-a23036}"
-SUPERVISOR_LOGINS="${SUPERVISOR_LOGINS:-KazumasaFUJIWARA}"
-LIMIT="${LIMIT:-30}"
-DAYS="${DAYS:-30}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${script_dir}/lib/common.sh"
+
+JSON_OUT=0
+ISSUE_DAYS="${ISSUE_DAYS:-30}"
 
 usage() {
 	cat <<'EOF'
-Usage: list-pending-issue-responses.sh
+Usage: list-pending-issue-responses.sh [--json]
 
-List open issues with student/external comments awaiting supervisor review.
+Scan org open issues (via gh search) for unreplied student/external comments.
 
 Environment:
-  ORG, EXCLUDE_PREFIX, LIMIT, DAYS   Same as fetch-recent-updates.sh
-  SUPERVISOR_LOGINS                  Comma-separated GitHub logins (default: KazumasaFUJIWARA)
+  ISSUE_DAYS         Only issues updated within this many days (default: 30)
+  SUPERVISOR_LOGINS  Comma-separated supervisor GitHub logins
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-	usage
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--json)
+		JSON_OUT=1
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "error: unknown option: $1" >&2
+		exit 2
+		;;
+	esac
+done
+
+require_gh
+require_jq
+
+cutoff="$(cutoff_epoch "$ISSUE_DAYS")"
+pending='[]'
+ok_count=0
+
+issues="$(gh search issues "org:${ORG} is:open sort:updated-desc" --limit 100 \
+	--json number,title,updatedAt,repository 2>/dev/null || echo '[]')"
+
+while IFS= read -r row; do
+	[[ -z "$row" ]] && continue
+	local_repo="$(jq -r '.repository.nameWithOwner' <<<"$row")"
+	repo="${local_repo#*/}"
+	[[ "$local_repo" == "$ORG/"* ]] || repo="$(jq -r '.repository.name' <<<"$row")"
+	is_excluded_repo "$repo" && continue
+
+	updated="$(jq -r '.updatedAt' <<<"$row")"
+	[[ "$(to_epoch "$updated")" -lt "$cutoff" ]] && continue
+
+	num="$(jq -r '.number' <<<"$row")"
+	title="$(jq -r '.title' <<<"$row")"
+
+	comments_json="$(gh api "repos/${ORG}/${repo}/issues/${num}/comments" --jq '.' 2>/dev/null || echo '[]')"
+	[[ "$comments_json" == "[]" ]] && continue
+
+	count="$(jq 'length' <<<"$comments_json")"
+	last_supervisor_idx=-1
+	for ((idx = 0; idx < count; idx++)); do
+		author="$(jq -r ".[$idx].user.login" <<<"$comments_json")"
+		is_supervisor_login "$author" && last_supervisor_idx=$idx
+	done
+
+	needs_reply=0
+	for ((idx = last_supervisor_idx + 1; idx < count; idx++)); do
+		author="$(jq -r ".[$idx].user.login" <<<"$comments_json")"
+		body="$(jq -r ".[$idx].body" <<<"$comments_json")"
+		created="$(jq -r ".[$idx].created_at" <<<"$comments_json")"
+		if ! is_supervisor_login "$author" && ! is_bot_login "$author"; then
+			needs_reply=1
+			excerpt="$(printf '%s' "$body" | tr '\n' ' ' | cut -c1-160)"
+			url="https://github.com/${ORG}/${repo}/issues/${num}"
+			pending="$(jq -c \
+				--arg repo "$repo" \
+				--argjson num "$num" \
+				--arg title "$title" \
+				--arg author "$author" \
+				--arg created "$created" \
+				--arg excerpt "$excerpt" \
+				--arg url "$url" \
+				'. + [{repo: $repo, number: $num, title: $title, author: $author, created_at: $created, excerpt: $excerpt, url: $url}]' \
+				<<<"$pending")"
+		fi
+	done
+
+	if [[ "$needs_reply" -eq 0 ]]; then
+		ok_count=$((ok_count + 1))
+	fi
+done < <(jq -c '.[]' <<<"$issues")
+
+if [[ "$JSON_OUT" -eq 1 ]]; then
+	printf '%s\n' "$pending"
 	exit 0
 fi
 
-if ! command -v gh >/dev/null 2>&1; then
-	echo "error: gh CLI is required" >&2
-	exit 1
-fi
-
-is_supervisor() {
-	local login="$1"
-	local IFS=,
-	for sup in $SUPERVISOR_LOGINS; do
-		[[ "$login" == "$sup" ]] && return 0
-	done
-	return 1
-}
-
-is_bot() {
-	local login="$1"
-	[[ "$login" == *[Bb]ot* ]] || [[ "$login" == "github-actions" ]]
-}
-
-cutoff_epoch="$(date -d "${DAYS} days ago" +%s 2>/dev/null || date -v-"${DAYS}"d +%s)"
-
-declare -a pending=()
-declare -a ok=()
-
-check_repo() {
-	local name="$1"
-	[[ "$name" == "${EXCLUDE_PREFIX}"* ]] && return 0
-
-	local issues_json
-	issues_json="$(gh issue list --repo "${ORG}/${name}" --state open --limit 50 --json number,title,updatedAt 2>/dev/null || true)"
-	[[ -z "$issues_json" || "$issues_json" == "[]" ]] && return 0
-
-	while IFS= read -r issue_line; do
-		[[ -z "$issue_line" ]] && continue
-		local num title updated
-		num="$(jq -r '.number' <<<"$issue_line")"
-		title="$(jq -r '.title' <<<"$issue_line")"
-		updated="$(jq -r '.updatedAt' <<<"$issue_line")"
-
-		local updated_epoch
-		updated_epoch="$(date -d "$updated" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$updated" +%s 2>/dev/null || echo 0)"
-		[[ "$updated_epoch" -lt "$cutoff_epoch" ]] && continue
-
-		local comments_json
-		comments_json="$(gh api "repos/${ORG}/${name}/issues/${num}/comments" --jq '.' 2>/dev/null || echo '[]')"
-		[[ "$comments_json" == "[]" ]] && continue
-
-		local last_supervisor_idx=-1
-		local idx=0
-		local count
-		count="$(jq 'length' <<<"$comments_json")"
-
-		while [[ "$idx" -lt "$count" ]]; do
-			local author
-			author="$(jq -r ".[$idx].user.login" <<<"$comments_json")"
-			if is_supervisor "$author"; then
-				last_supervisor_idx=$idx
-			fi
-			idx=$((idx + 1))
-		done
-
-		local needs_reply=0
-		idx=$((last_supervisor_idx + 1))
-		while [[ "$idx" -lt "$count" ]]; do
-			local author body created
-			author="$(jq -r ".[$idx].user.login" <<<"$comments_json")"
-			body="$(jq -r ".[$idx].body" <<<"$comments_json")"
-			created="$(jq -r ".[$idx].created_at" <<<"$comments_json")"
-			if ! is_supervisor "$author" && ! is_bot "$author"; then
-				needs_reply=1
-				local excerpt
-				excerpt="$(printf '%s' "$body" | head -3 | tr '\n' ' ' | cut -c1-120)"
-				pending+=("${ORG}/${name}#${num}|${author}|${created}|${excerpt}")
-			fi
-			idx=$((idx + 1))
-		done
-
-		if [[ "$needs_reply" -eq 0 && "$count" -gt 0 ]]; then
-			ok+=("${ORG}/${name}#${num}")
-		fi
-	done < <(jq -c '.[]' <<<"$issues_json")
-}
-
-echo "=== pending issue responses (${ORG}, exclude ^${EXCLUDE_PREFIX}) ==="
-
-mapfile -t repos < <(gh repo list "$ORG" --limit "$LIMIT" --json name -q '.[].name')
-for repo in "${repos[@]}"; do
-	check_repo "$repo"
-done
-
-if [[ ${#pending[@]} -gt 0 ]]; then
+echo "=== pending issue responses (${ORG}) ==="
+if [[ "$(jq 'length' <<<"$pending")" -gt 0 ]]; then
 	echo "PENDING (要対処):"
-	for entry in "${pending[@]}"; do
-		IFS='|' read -r ref author created excerpt <<<"$entry"
-		printf '  %s\n    author: %s\n    at: %s\n    excerpt: %s\n' "$ref" "$author" "$created" "$excerpt"
-	done
+	jq -r '.[] | "  \(.repo)#\(.number)  \(.url)\n    author: \(.author)\n    at: \(.created_at)\n    excerpt: \(.excerpt)"' <<<"$pending"
 else
 	echo "PENDING: (none)"
 fi
-
 echo
-if [[ ${#ok[@]} -gt 0 ]]; then
-	echo "OK (指導者が最後に返信済み): ${#ok[@]} issue(s)"
-fi
-
-echo "pending_count: ${#pending[@]}"
+echo "OK (指導者が最後に返信済み): ${ok_count} issue(s)"
+echo "pending_count: $(jq 'length' <<<"$pending")"

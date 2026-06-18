@@ -1,9 +1,8 @@
 ---
 name: student-theses-review
 description: >-
-  fujiwara-kazumasa-ryukokou-lab 組織の学生リポを高速同期し、a23036 以外の更新をレビューして
-  問題を GitHub Issue で指摘する。学生の issue コメントへの返信・検証も行う。
-  Use when 更新分取得、卒論レビュー、学生リポ、refresh-org、student-theses、
+  fujiwara-kazumasa-ryukokou-lab 組織の学生リポを run-review.sh で一括同期し、a23036 以外を
+  レビューして Issue 化・学生コメント返信する。Use when 更新分取得、卒論レビュー、student-theses、
   issue 起票、issue 返信、指導レビュー。
 triggers:
   - 更新分
@@ -18,133 +17,125 @@ triggers:
 
 # 学生リポジトリ更新レビュー
 
-`fujiwara-kazumasa-ryukokou-lab` 組織の学生研究リポについて、**更新分を取得**し、**a23036 系リポを除く**更新をレビューする。問題があれば **GitHub Issue で指摘**する。あわせて、**学生が issue にコメントした場合は内容を検証し返信**する。
+`fujiwara-kazumasa-ryukokou-lab` 組織の学生研究リポについて、**更新分を取得**し、**a23036 系リポを除く**更新をレビューする。問題があれば **GitHub Issue で指摘**する。**学生の issue コメント**は検証して返信する。
+
+## エージェント向けクイックスタート
+
+**まずこれを1本実行**（人間向けログ + `--json` で機械可読サマリ）:
+
+```bash
+STUDENT_THESES_ROOT=/path/to/student-theses \
+bash skills/student-theses-review/scripts/run-review.sh \
+  -r /path/to/student-theses --json
+```
+
+`next_actions` を上から順に実行する。
+
+| `next_actions` の例 | やること |
+|---------------------|----------|
+| `verify_and_reply_issue: repo#N` | [issue-student-response.md](references/issue-student-response.md) |
+| `review_repo: name (sha)` | 差分レビュー → issue 起票/コメント |
+| `clone_repo: name` | `gh repo clone ORG/name` または `refresh-org.sh` |
+
+レビュー完了後:
+
+```bash
+bash skills/student-theses-review/scripts/mark-reviewed.sh -r /path/to/student-theses <repo-name>
+```
 
 ## いつ使うか
 
 - 「更新分を取得してレビューして issue で指摘」
 - 「issue に学生が返信してきたので確認して」
 - 定期的な学生リポのドキュメント・実装レビュー
-- `refresh-org.sh` 全件同期が遅いときの代替フロー
 
 ## 前提
 
 | 項目 | 内容 |
 |------|------|
-| `gh` | 認証済み（`gh auth status` 成功） |
-| ワークスペース | `<STUDENT_THESES_ROOT>` に org リポが clone 済み |
-| 除外 | リポ名が `a23036` で始まるものはレビュー対象外 |
+| `gh` | 認証済み |
+| `jq` | インストール済み |
+| `STUDENT_THESES_ROOT` | org リポの clone 先（**`-r` で明示推奨**） |
+| 除外 | `EXCLUDE_PREFIX`（既定 `a23036`）+ `EXCLUDE_REPOS`（既定 `archive`） |
 | 応答言語 | 日本語 |
-| 信頼度 | 回答冒頭に信頼度（%）を示す。90% 未満なら処理を止め確認 |
+| 信頼度 | 回答冒頭に信頼度（%）。90% 未満なら確認 |
 
-## 手順（エージェント向け）
+## 手順（詳細）
 
-### 0. 学生 issue コメントの確認（毎回）
+### 1. オーケストレーション
 
-更新レビューの**前**に、未対応の学生コメントがないか確認する。
+[scripts/run-review.sh](scripts/run-review.sh) が以下をまとめて実行する:
 
-```bash
-ORG=fujiwara-kazumasa-ryukokou-lab \
-EXCLUDE_PREFIX=a23036 \
-bash skills/student-theses-review/scripts/list-pending-issue-responses.sh
-```
+1. 未対応の学生 issue コメント検出
+2. 直近 push リポの fetch
+3. `next_actions` 付き JSON サマリ出力
 
-- `PENDING` がある → [references/issue-student-response.md](references/issue-student-response.md) に従い検証・返信
-- 学生の「修正しました」は **必ずリポの差分で確認**してから返信
-- issue の close は指導者確認後（**gh-issue-lifecycle-policy**）
+### 2. 学生 issue コメント（PENDING がある場合）
 
-### 1. 更新対象の特定（高速）
+[references/issue-student-response.md](references/issue-student-response.md)
 
-**全件 `refresh-org.sh` は WSL + `/mnt/d` 上で遅くなりやすい。** まず直近 push のリポだけを対象にする。
+- 「直しました」は **必ずコミットを検証**してから `gh issue comment`
+- **自動 close しない**（**gh-issue-lifecycle-policy**）
 
-```bash
-ORG=fujiwara-kazumasa-ryukokou-lab \
-EXCLUDE_PREFIX=a23036 \
-DAYS=14 \
-bash skills/student-theses-review/scripts/list-review-targets.sh
-```
+### 3. 更新リポのレビュー（UPDATED がある場合）
 
-### 2. 更新分の取得
+各 `updated_repos[]` について:
 
-```bash
-STUDENT_THESES_ROOT=<clone先> \
-ORG=fujiwara-kazumasa-ryukokou-lab \
-EXCLUDE_PREFIX=a23036 \
-GIT_TIMEOUT=45 \
-bash skills/student-theses-review/scripts/fetch-recent-updates.sh
-```
-
-- `UPDATED` と表示されたリポのみレビューする
-- `UPTODATE` はスキップ可
-- 全件同期が必要なときだけ `student-theses/bin/refresh-org.sh` を使う（時間に余裕がある場合）
-
-### 3. レビュー
-
-各 `UPDATED` リポについて:
-
-1. `git log --oneline -10` で直近コミットを把握
+1. `git -C $ROOT/<name> log --oneline <before>..<after>`
 2. `git diff <before>..<after> --stat` または主要ファイルを読む
-3. 既存 issue を確認: `gh issue list --repo <ORG>/<name> --state all`
-4. [references/review-checklist.md](references/review-checklist.md) に沿って問題を洗い出す
+3. `gh issue list --repo ORG/<name> --state all`
+4. [references/review-checklist.md](references/review-checklist.md)
+5. 前回 SHA は `$ROOT/log/review-state.json` を参照（あれば `<last>..HEAD` に絞る）
 
 ### 4. Issue 化
 
-[references/issue-decision.md](references/issue-decision.md) に従い:
-
-- **既存 issue と同一論点** → `gh issue comment` で追記
-- **新規論点** → `gh issue create --body-file` で起票
-- **乱発しない**（重複・未確認の大量起票は避ける）
-
-Issue 本文テンプレ・`gh` 作法は **github-agent-issue** スキルに従う。  
-commit / PR 本文に `Closes #` / `Fixes #` は使わない（**gh-issue-lifecycle-policy**）。
+[references/issue-decision.md](references/issue-decision.md)  
+本文テンプレ: [references/issue-body-template.md](references/issue-body-template.md)  
+詳細作法: **github-agent-issue** スキル
 
 ```bash
-gh issue create --repo <ORG>/<REPO> \
-  --title "[doc] 短い要約" \
-  --body-file /tmp/issue-body.md \
-  -l documentation   # 存在するラベルのみ
+gh issue create --repo ORG/REPO --title "[doc] …" --body-file /tmp/issue-body.md
 ```
 
-### 5. 学生コメントへの返信（ステップ 0 で PENDING があった場合）
+### 5. レビュー済み記録
 
-[references/issue-student-response.md](references/issue-student-response.md) に従う。
-
-1. コメント全文を読む
-2. 該当リポの最新コミットで修正を検証
-3. `gh issue comment` で確認結果を返信（充足 / 未達を明記）
-4. 全条件充足でも **自動 close しない**
+```bash
+mark-reviewed.sh -r $STUDENT_THESES_ROOT <repo-name> [sha]
+```
 
 ### 6. 結果報告
 
-ユーザーへ以下を簡潔に報告する:
-
-- 学生 issue コメントの対処結果（PENDING 件数・返信 URL）
-- 同期方法（高速 / 全件）
-- 更新のあったリポ一覧（a23036 除外）
+- `pending_issues` の対処結果
+- `updated_repos` のレビュー結果
 - 起票・コメントした issue URL
-- 問題なしと判断したリポ
+- `mark-reviewed` したリポ
 
 ## 環境変数
 
 | 変数 | 既定 | 説明 |
 |------|------|------|
 | `ORG` | `fujiwara-kazumasa-ryukokou-lab` | GitHub 組織 |
-| `STUDENT_THESES_ROOT` | スクリプトから自動推定 | clone 先ルート |
-| `EXCLUDE_PREFIX` | `a23036` | レビュー除外プレフィックス |
-| `DAYS` | `14` | 直近何日以内の push を対象にするか |
-| `LIMIT` | `30` | `gh repo list` の上限 |
-| `GIT_TIMEOUT` | `45` | 1 リポあたり git fetch の秒数 |
-| `SUPERVISOR_LOGINS` | `KazumasaFUJIWARA` | 指導者 GitHub ログイン（カンマ区切り） |
+| `STUDENT_THESES_ROOT` | （要指定推奨） | clone 先ルート |
+| `EXCLUDE_PREFIX` | `a23036` | 除外プレフィックス |
+| `EXCLUDE_REPOS` | `archive` | 除外リポ（カンマ区切り） |
+| `DAYS` | `14` | push 遡り日数 |
+| `ISSUE_DAYS` | `30` | issue 遡り日数 |
+| `LIMIT` | `50` | `gh repo list` 上限 |
+| `GIT_TIMEOUT` | `45` | fetch タイムアウト秒 |
+| `SUPERVISOR_LOGINS` | `KazumasaFUJIWARA` | 指導者ログイン |
 
 ## 依存スキル
 
-- **github-agent-issue**: Issue 本文テンプレ・`gh issue create` の作法
-- **gh-issue-lifecycle-policy**: `Closes #` 禁止、手動 close の原則
+- **github-agent-issue**: Issue 作法（未インストール時は `issue-body-template.md` を使用）
+- **gh-issue-lifecycle-policy**: `Closes #` 禁止
 
 ## 関連スクリプト
 
 | スクリプト | 役割 |
 |------------|------|
-| [scripts/list-review-targets.sh](scripts/list-review-targets.sh) | 直近 push かつ a23036 以外のリポ一覧 |
-| [scripts/fetch-recent-updates.sh](scripts/fetch-recent-updates.sh) | 対象リポのみ `git fetch` + fast-forward |
-| [scripts/list-pending-issue-responses.sh](scripts/list-pending-issue-responses.sh) | 未対応の学生 issue コメント一覧 |
+| [scripts/run-review.sh](scripts/run-review.sh) | **メイン入口**（推奨） |
+| [scripts/mark-reviewed.sh](scripts/mark-reviewed.sh) | レビュー済み SHA 記録 |
+| [scripts/list-pending-issue-responses.sh](scripts/list-pending-issue-responses.sh) | 未返信 issue 一覧 |
+| [scripts/fetch-recent-updates.sh](scripts/fetch-recent-updates.sh) | 高速 fetch |
+| [scripts/list-review-targets.sh](scripts/list-review-targets.sh) | 対象リポ一覧 |
+| [scripts/lib/common.sh](scripts/lib/common.sh) | 共通設定・関数 |

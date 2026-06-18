@@ -16,13 +16,14 @@
 
 ### 1. 未対応コメントの検出
 
+`run-review.sh` の `pending_issues` を使う（推奨）。単体実行する場合:
+
 ```bash
-ORG=fujiwara-kazumasa-ryukokou-lab \
-EXCLUDE_PREFIX=a23036 \
-bash skills/student-theses-review/scripts/list-pending-issue-responses.sh
+bash skills/student-theses-review/scripts/list-pending-issue-responses.sh --json
 ```
 
-`PENDING` が出た issue について対処する。`OK` のみならこの節はスキップ可。
+
+`pending_issues` が空でなければ対処する。
 
 ### 2. 内容の検証（必須）
 

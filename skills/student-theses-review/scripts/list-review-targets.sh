@@ -1,57 +1,61 @@
 #!/usr/bin/env bash
-# List org repos with recent pushes, excluding a23036 prefix.
+# List org repos with recent pushes, excluding configured repos.
 set -euo pipefail
 
-ORG="${ORG:-fujiwara-kazumasa-ryukokou-lab}"
-EXCLUDE_PREFIX="${EXCLUDE_PREFIX:-a23036}"
-DAYS="${DAYS:-14}"
-LIMIT="${LIMIT:-30}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=lib/common.sh
+source "${script_dir}/lib/common.sh"
+
+JSON_OUT=0
 
 usage() {
 	cat <<'EOF'
-Usage: list-review-targets.sh
+Usage: list-review-targets.sh [-r ROOT] [--json]
 
-List repositories in ORG pushed within DAYS, excluding EXCLUDE_PREFIX.
-
-Environment:
-  ORG             GitHub organization (default: fujiwara-kazumasa-ryukokou-lab)
-  EXCLUDE_PREFIX  Repo name prefix to skip (default: a23036)
-  DAYS            Lookback window in days (default: 14)
-  LIMIT           gh repo list limit (default: 30)
+List repositories in ORG pushed within DAYS, excluding EXCLUDE_PREFIX / EXCLUDE_REPOS.
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-	usage
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	-r | --root)
+		STUDENT_THESES_ROOT="$2"
+		shift 2
+		;;
+	--json)
+		JSON_OUT=1
+		shift
+		;;
+	-h | --help)
+		usage
+		exit 0
+		;;
+	*)
+		echo "error: unknown option: $1" >&2
+		exit 2
+		;;
+	esac
+done
+
+require_gh
+require_jq
+
+cutoff="$(cutoff_epoch "$DAYS")"
+targets='[]'
+
+while IFS=$'\t' read -r pushed name; do
+	[[ -z "$name" ]] && continue
+	is_excluded_repo "$name" && continue
+	[[ "$(to_epoch "$pushed")" -lt "$cutoff" ]] && continue
+	targets="$(jq -c --arg n "$name" --arg p "$pushed" '. + [{name: $n, pushed_at: $p}]' <<<"$targets")"
+done < <(list_target_repos)
+
+if [[ "$JSON_OUT" -eq 1 ]]; then
+	jq -nc --arg org "$ORG" --argjson repos "$targets" '{org: $org, targets: $repos}'
 	exit 0
 fi
 
-if ! command -v gh >/dev/null 2>&1; then
-	echo "error: gh CLI is required" >&2
-	exit 1
-fi
-
-cutoff_epoch="$(date -d "${DAYS} days ago" +%s 2>/dev/null || date -v-"${DAYS}"d +%s)"
-
-echo "=== review targets (${ORG}, last ${DAYS} days, exclude ^${EXCLUDE_PREFIX}) ==="
-
-count=0
-while IFS=$'\t' read -r pushed name; do
-	[[ -z "$name" ]] && continue
-	if [[ "$name" == "${EXCLUDE_PREFIX}"* ]]; then
-		continue
-	fi
-	pushed_epoch="$(date -d "$pushed" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%SZ" "$pushed" +%s 2>/dev/null || echo 0)"
-	if [[ "$pushed_epoch" -lt "$cutoff_epoch" ]]; then
-		continue
-	fi
-	printf '%s\t%s\n' "$pushed" "$name"
-	count=$((count + 1))
-done < <(gh repo list "$ORG" --limit "$LIMIT" --json name,pushedAt -q '.[] | "\(.pushedAt)\t\(.name)"' | sort -r)
-
-if [[ "$count" -eq 0 ]]; then
-	echo "(none)"
-fi
-
+echo "=== review targets (${ORG}, last ${DAYS} days) ==="
+jq -r '.[] | "\(.pushed_at)\t\(.name)"' <<<"$targets"
 echo
-echo "count: ${count}"
+echo "count: $(jq 'length' <<<"$targets")"

@@ -6,7 +6,21 @@
 
 | スキル | 説明 |
 |--------|------|
-| [student-theses-review](skills/student-theses-review/SKILL.md) | 更新分取得 → a23036 以外をレビュー → Issue 化／学生コメントへの返信 |
+| [student-theses-review](skills/student-theses-review/SKILL.md) | `run-review.sh` で一括同期 → レビュー → Issue 化／学生コメント返信 |
+
+## クイックスタート（エージェント）
+
+```bash
+STUDENT_THESES_ROOT=/path/to/student-theses \
+bash skills/student-theses-review/scripts/run-review.sh -r /path/to/student-theses --json
+```
+
+`next_actions` を順に実行し、レビュー後は `mark-reviewed.sh` で記録する。
+
+## 前提
+
+- GitHub CLI (`gh`) ・ `jq` 認証済み
+- ローカルに `student-theses` ワークスペース（`-r` でパス指定）
 
 ## インストール
 
@@ -26,8 +40,3 @@ gh skill install --from-local skills/student-theses-review --agent cursor
 ```bash
 gh skill publish --tag vX.Y.Z
 ```
-
-## 前提
-
-- GitHub CLI (`gh`) 認証済み
-- ローカルに `student-theses` ワークスペース（組織リポの clone 先）があること

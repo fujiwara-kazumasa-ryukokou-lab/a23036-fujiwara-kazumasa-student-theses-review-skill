@@ -20,10 +20,11 @@
 
 ## DB 系
 
-- [ ] 仕様書のテーブル数と `schema.sql` の CREATE TABLE 数が一致するか
-- [ ] カラム名・NOT NULL 制約が仕様と schema で一致するか
-- [ ] `PRAGMA foreign_keys` の有効化
-- [ ] 仕様書が複数版（旧・修正版）ある場合、正本がどれか明確か
+- [ ] 仕様書のテーブル数と実装が一致するか（`schema.sql` / エクスポート DDL / コミット済み `.db` のいずれかを正本として検証）
+- [ ] カラム名・NOT NULL 制約が仕様と正本で一致するか
+- [ ] `PRAGMA foreign_keys` の有効化（SQLite の場合）
+- [ ] 仕様書が複数版ある場合、正本が README で明示されているか
+- [ ] バイナリ `.db` のみの場合、再構築手順（DDL / seed）があるか
 
 ## 3D / LEGO 系
 
