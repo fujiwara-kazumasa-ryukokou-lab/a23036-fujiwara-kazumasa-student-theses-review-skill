@@ -140,4 +140,5 @@ mark-reviewed.sh -r $STUDENT_THESES_ROOT <repo-name> [sha]
 | [scripts/list-review-targets.sh](scripts/list-review-targets.sh) | 対象リポ一覧 |
 | [scripts/lib/common.sh](scripts/lib/common.sh) | 共通設定・関数 |
 | [scripts/install-agent-md.sh](scripts/install-agent-md.sh) | `agent.md` をワークスペースへ展開 |
+| [scripts/install-slash-command.sh](scripts/install-slash-command.sh) | `/student-theses-review` を Cursor へ配置 |
 | [references/agent.md.template](references/agent.md.template) | ルート `agent.md` のポータブルテンプレ |

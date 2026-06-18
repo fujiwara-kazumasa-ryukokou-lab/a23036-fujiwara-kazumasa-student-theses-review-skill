@@ -5,6 +5,9 @@
 別環境用テンプレ: [`skills/student-theses-review/references/agent.md.template`](skills/student-theses-review/references/agent.md.template)  
 展開コマンド: `bash skills/student-theses-review/scripts/install-agent-md.sh -r <STUDENT_THESES_ROOT>`
 
+Cursor スラッシュコマンド: `/student-theses-review`  
+インストール: `bash skills/student-theses-review/scripts/install-slash-command.sh -r <STUDENT_THESES_ROOT>`
+
 ## 役割分担
 
 | ファイル | 対象 | 内容 |

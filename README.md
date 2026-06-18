@@ -25,6 +25,13 @@ bash skills/student-theses-review/scripts/install-agent-md.sh \
   -s /path/to/skills/student-theses-review   # gh skill install 先でも可
 ```
 
+スラッシュコマンド `/student-theses-review`:
+
+```bash
+bash skills/student-theses-review/scripts/install-slash-command.sh -r /path/to/student-theses
+# 全プロジェクト: --global
+```
+
 ## 前提
 
 - GitHub CLI (`gh`) ・ `jq` 認証済み
