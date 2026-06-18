@@ -35,6 +35,6 @@
 5. 環境（ブランチ、`git rev-parse --short HEAD`）
 6. 関連 issue（`#N` 参照。`Closes #` は使わない）
 
-## ラベル
+## 学生コメントが付いた場合
 
-リポに存在するラベルのみ使用。迷ったらラベルなしで作成可。
+指導者コメント**より後**の学生コメントは、[issue-student-response.md](issue-student-response.md) に従い検証・返信する。新規 issue は原則起票しない。

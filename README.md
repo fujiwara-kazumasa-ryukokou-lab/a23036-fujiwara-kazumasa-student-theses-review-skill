@@ -6,7 +6,7 @@
 
 | スキル | 説明 |
 |--------|------|
-| [student-theses-review](skills/student-theses-review/SKILL.md) | 更新分取得 → a23036 以外をレビュー → 問題があれば Issue 化 |
+| [student-theses-review](skills/student-theses-review/SKILL.md) | 更新分取得 → a23036 以外をレビュー → Issue 化／学生コメントへの返信 |
 
 ## インストール
 
