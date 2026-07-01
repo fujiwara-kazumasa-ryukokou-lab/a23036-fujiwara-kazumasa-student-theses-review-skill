@@ -18,6 +18,7 @@ Cursor スラッシュコマンド: `/student-theses-review`
 
 ## いつこのスキルを使うか
 
+- 学生 org リポの**活動状況の把握**（クエリ応答）
 - 学生 org リポの**更新分取得とレビュー**
 - 問題の **GitHub Issue 起票**（または既存 issue へのコメント）
 - 学生の **issue コメントへの返信**（修正報告の検証含む）
@@ -27,7 +28,18 @@ Cursor スラッシュコマンド: `/student-theses-review`
 
 ## 作業フロー（必須）
 
-### 1. オーケストレーション
+### 0. 活動状況の把握（読み取りのみ）
+
+```bash
+STUDENT_THESES_ROOT=/path/to/student-theses \
+bash skills/student-theses-review/scripts/query-student-activity.sh \
+  -r /path/to/student-theses -q status
+```
+
+- stdout は JSON。`answer` を要約として使う
+- 詳細: [query-student-activity.md](skills/student-theses-review/references/query-student-activity.md)
+
+### 1. オーケストレーション（レビュー作業）
 
 ```bash
 STUDENT_THESES_ROOT=/path/to/student-theses \
@@ -51,6 +63,8 @@ bash skills/student-theses-review/scripts/run-review.sh \
 - 本文テンプレ: [issue-body-template.md](skills/student-theses-review/references/issue-body-template.md)
 - `gh issue create` は **`--body-file` 推奨**
 - commit / PR に **`Closes #` / `Fixes #` を書かない**
+- **充足した issue はエージェントが `gh issue close` してよい**（検証後）
+- **学生による指導者起票 issue の close は禁止** → [issue-close-policy.md](skills/student-theses-review/references/issue-close-policy.md)
 
 ### 4. レビュー済み記録
 
@@ -66,11 +80,14 @@ bash skills/student-theses-review/scripts/mark-reviewed.sh \
 | 作業 | 参照先 |
 |------|--------|
 | スキル全体（正本） | [skills/student-theses-review/SKILL.md](skills/student-theses-review/SKILL.md) |
-| 一括実行 | [scripts/run-review.sh](skills/student-theses-review/scripts/run-review.sh) |
+| 活動状況クエリ | [scripts/query-student-activity.sh](skills/student-theses-review/scripts/query-student-activity.sh) |
+| レビュー一括実行 | [scripts/run-review.sh](skills/student-theses-review/scripts/run-review.sh) |
 | 未返信 issue 一覧 | [scripts/list-pending-issue-responses.sh](skills/student-theses-review/scripts/list-pending-issue-responses.sh) |
 | 高速 fetch | [scripts/fetch-recent-updates.sh](skills/student-theses-review/scripts/fetch-recent-updates.sh) |
 | Issue 作法（外部） | **github-agent-issue** スキル |
+| Issue close 方針 | [issue-close-policy.md](skills/student-theses-review/references/issue-close-policy.md) |
 | Issue close 方針（外部） | **gh-issue-lifecycle-policy** スキル |
+| 学生 close 防止 workflow | `scripts/install-issue-close-guard.sh` |
 
 ## 作業前チェック
 
@@ -79,7 +96,7 @@ bash skills/student-theses-review/scripts/mark-reviewed.sh \
 - [ ] `STUDENT_THESES_ROOT` を **`-r` で明示**した（推定に頼らない）
 - [ ] 応答は**日本語**、冒頭に**信頼度（%）**（90% 未満なら確認）
 - [ ] 学生の「直しました」は**コミット検証後**にのみ返信
-- [ ] issue の close は**指導者確認後**（エージェントが勝手に close しない）
+- [ ] 充足した issue はエージェントが close 可（検証後）。学生による close は禁止
 - [ ] **commit はユーザーの明示指示があるときのみ**
 
 ## 環境変数（よく使う）

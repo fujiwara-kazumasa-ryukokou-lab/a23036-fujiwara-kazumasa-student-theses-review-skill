@@ -13,7 +13,7 @@ usage() {
 	cat <<'EOF'
 Usage: list-pending-issue-responses.sh [--json]
 
-Scan org open issues (via gh search) for unreplied student/external comments.
+Scan org open issues (per-repo via gh issue list) for unreplied student/external comments.
 
 Environment:
   ISSUE_DAYS         Only issues updated within this many days (default: 30)
@@ -45,24 +45,19 @@ cutoff="$(cutoff_epoch "$ISSUE_DAYS")"
 pending='[]'
 ok_count=0
 
-issues="$(gh search issues "org:${ORG} is:open sort:updated-desc" --limit 100 \
-	--json number,title,updatedAt,repository 2>/dev/null || echo '[]')"
-
-while IFS= read -r row; do
-	[[ -z "$row" ]] && continue
-	local_repo="$(jq -r '.repository.nameWithOwner' <<<"$row")"
-	repo="${local_repo#*/}"
-	[[ "$local_repo" == "$ORG/"* ]] || repo="$(jq -r '.repository.name' <<<"$row")"
-	is_excluded_repo "$repo" && continue
+scan_issue() {
+	local repo="$1"
+	local row="$2"
+	local updated num title
 
 	updated="$(jq -r '.updatedAt' <<<"$row")"
-	[[ "$(to_epoch "$updated")" -lt "$cutoff" ]] && continue
+	[[ "$(to_epoch "$updated")" -lt "$cutoff" ]] && return 0
 
 	num="$(jq -r '.number' <<<"$row")"
 	title="$(jq -r '.title' <<<"$row")"
 
 	comments_json="$(gh api "repos/${ORG}/${repo}/issues/${num}/comments" --jq '.' 2>/dev/null || echo '[]')"
-	[[ "$comments_json" == "[]" ]] && continue
+	[[ "$comments_json" == "[]" ]] && return 0
 
 	count="$(jq 'length' <<<"$comments_json")"
 	last_supervisor_idx=-1
@@ -96,7 +91,21 @@ while IFS= read -r row; do
 	if [[ "$needs_reply" -eq 0 ]]; then
 		ok_count=$((ok_count + 1))
 	fi
-done < <(jq -c '.[]' <<<"$issues")
+}
+
+while IFS= read -r repo; do
+	[[ -z "$repo" ]] && continue
+	is_excluded_repo "$repo" && continue
+
+	repo_issues="$(gh issue list --repo "${ORG}/${repo}" --state open \
+		--json number,title,updatedAt 2>/dev/null || true)"
+	[[ -z "$repo_issues" || "$repo_issues" == "[]" ]] && continue
+
+	while IFS= read -r row; do
+		[[ -z "$row" ]] && continue
+		scan_issue "$repo" "$row"
+	done < <(jq -c '.[]' <<<"$repo_issues")
+done < <(gh repo list "$ORG" --limit "$LIMIT" --json name -q '.[].name' 2>/dev/null || true)
 
 if [[ "$JSON_OUT" -eq 1 ]]; then
 	printf '%s\n' "$pending"

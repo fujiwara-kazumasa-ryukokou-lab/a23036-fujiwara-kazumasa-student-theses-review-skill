@@ -61,7 +61,8 @@ bash "$SKILL_DIR/scripts/mark-reviewed.sh" -r "$STUDENT_THESES_ROOT" <repo-name>
 - 除外: `a23036*`、`archive`
 - 学生の「直しました」はコミット検証後のみ返信
 - `Closes #` / `Fixes #` 禁止
-- issue close は指導者確認後のみ
+- **充足した issue はエージェントが `gh issue close` 可**（検証後）
+- **学生による指導者起票 issue の close は禁止**（`references/issue-close-policy.md`）
 - commit はユーザー明示時のみ
 
 ## スキル内 references（`SKILL_DIR/references/`）
@@ -70,5 +71,6 @@ bash "$SKILL_DIR/scripts/mark-reviewed.sh" -r "$STUDENT_THESES_ROOT" <repo-name>
 - `issue-decision.md` — 起票判断
 - `issue-student-response.md` — 学生コメント返信
 - `issue-body-template.md` — issue 本文テンプレ
+- `issue-close-policy.md` — close 判断・学生 close 禁止
 
 外部スキル: **github-agent-issue**, **gh-issue-lifecycle-policy**

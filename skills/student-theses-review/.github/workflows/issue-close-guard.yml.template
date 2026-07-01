@@ -1,0 +1,60 @@
+# 指導者起票 issue の学生による close を自動 reopen する
+# 配置: .github/workflows/issue-close-guard.yml
+# インストール: scripts/install-issue-close-guard.sh
+name: Issue close guard
+
+on:
+  issues:
+    types: [closed]
+
+permissions:
+  issues: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Reopen if student closed supervisor issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const supervisors = (process.env.SUPERVISOR_LOGINS || 'KazumasaFUJIWARA')
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean);
+
+            const issue = context.payload.issue;
+            const closer = context.payload.sender.login;
+            const author = issue.user.login;
+
+            const authorIsSupervisor = supervisors.includes(author);
+            const closerIsSupervisor = supervisors.includes(closer);
+
+            if (!authorIsSupervisor || closerIsSupervisor) {
+              core.info('No action: supervisor closed, or issue not opened by supervisor.');
+              return;
+            }
+
+            await github.rest.issues.reopen({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: [
+                '## 自動 reopen（指導者レビュー運用）',
+                '',
+                `@${closer} さんが close しましたが、**指導者起票の issue は学生による close を禁止**しています。',
+                '',
+                '修正が完了した場合は **コメントで報告**してください。指導者がコミットを確認したうえで close します。',
+                '',
+                '- commit / PR に `Closes #` / `Fixes #` は書かないでください',
+              ].join('\n'),
+            });
+
+        env:
+          SUPERVISOR_LOGINS: KazumasaFUJIWARA

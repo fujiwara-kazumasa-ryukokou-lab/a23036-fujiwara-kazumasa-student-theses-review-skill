@@ -13,6 +13,9 @@ triggers:
   - issue 起票
   - issue 返信
   - 学生コメント
+  - 学生活動
+  - 活動状況
+  - 要レビュー
 ---
 
 # 学生リポジトリ更新レビュー
@@ -21,7 +24,17 @@ triggers:
 
 ## エージェント向けクイックスタート
 
-**まずこれを1本実行**（人間向けログ + `--json` で機械可読サマリ）:
+**活動状況の把握だけ**なら読み取り専用クエリ:
+
+```bash
+STUDENT_THESES_ROOT=/path/to/student-theses \
+bash skills/student-theses-review/scripts/query-student-activity.sh \
+  -r /path/to/student-theses -q status
+```
+
+`answer` フィールドを読み、詳細は `repos` / `items` を参照。[query-student-activity.md](references/query-student-activity.md)
+
+**レビュー作業を始める**ときは以下を実行（人間向けログ + `--json` で機械可読サマリ）:
 
 ```bash
 STUDENT_THESES_ROOT=/path/to/student-theses \
@@ -75,7 +88,9 @@ bash skills/student-theses-review/scripts/mark-reviewed.sh -r /path/to/student-t
 [references/issue-student-response.md](references/issue-student-response.md)
 
 - 「直しました」は **必ずコミットを検証**してから `gh issue comment`
-- **自動 close しない**（**gh-issue-lifecycle-policy**）
+- 受け入れ条件を満たした issue は **エージェントが `gh issue close` してよい**（検証コメント後）。詳細は [issue-close-policy.md](references/issue-close-policy.md)
+- **学生による指導者起票 issue の close は禁止**（reopen または Actions ガード）
+- commit / PR の **`Closes #` / `Fixes #` 禁止**（**gh-issue-lifecycle-policy**）
 
 ### 3. 更新リポのレビュー（UPDATED がある場合）
 
@@ -103,11 +118,20 @@ gh issue create --repo ORG/REPO --title "[doc] …" --body-file /tmp/issue-body.
 mark-reviewed.sh -r $STUDENT_THESES_ROOT <repo-name> [sha]
 ```
 
-### 6. 結果報告
+### 6. Issue close
+
+[references/issue-close-policy.md](references/issue-close-policy.md)
+
+- レビューで**充足**した issue → 確認コメントのうえ `gh issue close` を実行してよい
+- 学生が勝手に close していた場合は **reopen** し、コメントで理由を伝える
+- 恒久対策: `scripts/install-issue-close-guard.sh` で GitHub Actions を各リポに配置
+
+### 7. 結果報告
 
 - `pending_issues` の対処結果
 - `updated_repos` のレビュー結果
 - 起票・コメントした issue URL
+- close した issue / close 候補の issue
 - `mark-reviewed` したリポ
 
 ## 環境変数
@@ -133,7 +157,8 @@ mark-reviewed.sh -r $STUDENT_THESES_ROOT <repo-name> [sha]
 
 | スクリプト | 役割 |
 |------------|------|
-| [scripts/run-review.sh](scripts/run-review.sh) | **メイン入口**（推奨） |
+| [scripts/query-student-activity.sh](scripts/query-student-activity.sh) | **活動状況クエリ**（読み取り専用・JSON） |
+| [scripts/run-review.sh](scripts/run-review.sh) | **レビュー入口**（fetch + next_actions） |
 | [scripts/mark-reviewed.sh](scripts/mark-reviewed.sh) | レビュー済み SHA 記録 |
 | [scripts/list-pending-issue-responses.sh](scripts/list-pending-issue-responses.sh) | 未返信 issue 一覧 |
 | [scripts/fetch-recent-updates.sh](scripts/fetch-recent-updates.sh) | 高速 fetch |
@@ -141,4 +166,6 @@ mark-reviewed.sh -r $STUDENT_THESES_ROOT <repo-name> [sha]
 | [scripts/lib/common.sh](scripts/lib/common.sh) | 共通設定・関数 |
 | [scripts/install-agent-md.sh](scripts/install-agent-md.sh) | `agent.md` をワークスペースへ展開 |
 | [scripts/install-slash-command.sh](scripts/install-slash-command.sh) | `/student-theses-review` を Cursor へ配置 |
+| [scripts/install-issue-close-guard.sh](scripts/install-issue-close-guard.sh) | 学生 close 防止 workflow を学生リポへ配置 |
+| [references/issue-close-policy.md](references/issue-close-policy.md) | close 判断・学生 close 禁止 |
 | [references/agent.md.template](references/agent.md.template) | ルート `agent.md` のポータブルテンプレ |

@@ -49,7 +49,7 @@ bash skills/student-theses-review/scripts/list-pending-issue-responses.sh --json
 
 残り: …（あれば）
 
-実機確認後に close します。
+受け入れ条件を充足しているため close します（[issue-close-policy.md](issue-close-policy.md)）。
 ```
 
 **未達の場合**（例）:
@@ -68,15 +68,17 @@ bash skills/student-theses-review/scripts/list-pending-issue-responses.sh --json
 
 | 状況 | 操作 |
 |------|------|
-| 全受け入れ条件を満たした | **自動 close しない**。ユーザ（指導者）の確認後に `gh issue close`（**gh-issue-lifecycle-policy**） |
+| 全受け入れ条件を満たした | 確認コメントのうえ **`gh issue close` を実行**（[issue-close-policy.md](issue-close-policy.md)） |
 | 一部のみ充足 | issue は open のまま、コメントで未達を明記 |
 | 設計上 issue 自体が不要と判明 | 理由をコメントし、指導者判断で close |
 | 新たな問題が見つかった | 同一論点ならコメント、別論点なら新規 issue |
+| **学生が指導者起票 issue を close した** | `gh issue reopen` + 理由コメント。恒久対策は [issue-close-policy.md](issue-close-policy.md) の Actions ガード |
 
 ### 5. 禁止事項
 
 - 学生コメントを読まずに「了解」だけ返す
 - 検証なしで issue を close する
+- **学生に issue close をさせる**（修正報告はコメントのみ）
 - commit / PR に `Closes #N` を書く（学生への指示時も同様に注意）
 - 同一内容の返信を重複投稿する
 

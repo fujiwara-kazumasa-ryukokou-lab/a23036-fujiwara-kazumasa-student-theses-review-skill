@@ -48,6 +48,8 @@ bash <SKILL_DIR>/scripts/run-review.sh \
 - 本文テンプレ: `<SKILL_DIR>/references/issue-body-template.md`
 - `gh issue create` は **`--body-file` 推奨**
 - commit / PR に **`Closes #` / `Fixes #` を書かない**
+- **充足した issue はエージェントが `gh issue close` してよい**（検証後）
+- **学生による指導者起票 issue の close は禁止** → `<SKILL_DIR>/references/issue-close-policy.md`
 
 ### 4. レビュー済み記録
 
@@ -67,7 +69,9 @@ bash <SKILL_DIR>/scripts/mark-reviewed.sh \
 | 未返信 issue 一覧 | `<SKILL_DIR>/scripts/list-pending-issue-responses.sh` |
 | 高速 fetch | `<SKILL_DIR>/scripts/fetch-recent-updates.sh` |
 | Issue 作法（外部） | **github-agent-issue** スキル |
+| Issue close 方針 | `<SKILL_DIR>/references/issue-close-policy.md` |
 | Issue close 方針（外部） | **gh-issue-lifecycle-policy** スキル |
+| 学生 close 防止 workflow | `<SKILL_DIR>/scripts/install-issue-close-guard.sh` |
 
 ## 作業前チェック
 
@@ -76,7 +80,7 @@ bash <SKILL_DIR>/scripts/mark-reviewed.sh \
 - [ ] `STUDENT_THESES_ROOT` を **`-r` で明示**した（推定に頼らない）
 - [ ] 応答は**日本語**、冒頭に**信頼度（%）**（90% 未満なら確認）
 - [ ] 学生の「直しました」は**コミット検証後**にのみ返信
-- [ ] issue の close は**指導者確認後**（エージェントが勝手に close しない）
+- [ ] 充足した issue はエージェントが close 可（検証後）。学生による close は禁止
 - [ ] **commit はユーザーの明示指示があるときのみ**
 
 ## 環境変数（よく使う）
